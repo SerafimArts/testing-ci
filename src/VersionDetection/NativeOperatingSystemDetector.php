@@ -47,22 +47,31 @@ final readonly class NativeOperatingSystemDetector
     {
         $default = \php_uname('s');
 
-        dump(
-            \php_uname('s'),
-            \php_uname('n'),
-            \php_uname('r'),
-            \php_uname('v'),
-            \php_uname('m'),
-            $_SERVER,
-        );
-
         return match ($family) {
+            self::FAMILY_WINDOWS => $this->tryDetectWindowsName()
+                ?? $default,
             self::FAMILY_LINUX,
             self::FAMILY_MACOS,
             self::FAMILY_UNIX => $this->tryDetectLinuxName()
                 ?? $default,
             default => $default,
         };
+    }
+
+    private function tryDetectWindowsName(): ?string
+    {
+        return $this->tryDetectWindowsNameFromUname();
+    }
+
+    private function tryDetectWindowsNameFromUname(): ?string
+    {
+        \preg_match('/\((.+?)\)/', \php_uname('v'), $matches);
+
+        if (\is_string($matches[1]) && $matches[1] !== '') {
+            return $matches[1];
+        }
+
+        return null;
     }
 
     /**
@@ -80,6 +89,8 @@ final readonly class NativeOperatingSystemDetector
      */
     private function tryDetectLinuxNameFromWindowsSubsystem(): ?string
     {
+        dump('Name detection: ' . __FUNCTION__);
+
         $fullName = $_SERVER['WSL_DISTRO_NAME'] ?? null;
 
         if ($fullName === null) {
@@ -108,6 +119,8 @@ final readonly class NativeOperatingSystemDetector
      */
     private function tryDetectLinuxNameFromEtcRelease(string $pathname, string $expectedKey): ?string
     {
+        dump('Name detection: ' . __FUNCTION__ . ' -> ' . $pathname);
+
         if (!\is_readable($pathname)) {
             return null;
         }
@@ -244,23 +257,23 @@ final readonly class NativeOperatingSystemDetector
              * @phpstan-var \FFI $ffi
              */
             $ffi = \FFI::cdef(<<<'CDATA'
-                typedef long NTSTATUS;
-                typedef unsigned int ULONG;
-                typedef unsigned int WCHAR;
+                                  typedef long NTSTATUS;
+                                  typedef unsigned int ULONG;
+                                  typedef unsigned int WCHAR;
 
-                typedef struct _OSVERSIONINFOW {
-                    ULONG dwOSVersionInfoSize;
-                    ULONG dwMajorVersion;
-                    ULONG dwMinorVersion;
-                    ULONG dwBuildNumber;
-                    ULONG dwPlatformId;
-                    WCHAR szCSDVersion[128];
-                } OSVERSIONINFOW, *PRTL_OSVERSIONINFOW;
+                                  typedef struct _OSVERSIONINFOW {
+                                      ULONG dwOSVersionInfoSize;
+                                      ULONG dwMajorVersion;
+                                      ULONG dwMinorVersion;
+                                      ULONG dwBuildNumber;
+                                      ULONG dwPlatformId;
+                                      WCHAR szCSDVersion[128];
+                                  } OSVERSIONINFOW, *PRTL_OSVERSIONINFOW;
 
-                NTSTATUS RtlGetVersion(
-                    PRTL_OSVERSIONINFOW lpVersionInformation
-                );
-                CDATA, 'ntdll.dll');
+                                  NTSTATUS RtlGetVersion(
+                                      PRTL_OSVERSIONINFOW lpVersionInformation
+                                  );
+                                  CDATA, 'ntdll.dll');
 
             /**
              * @var object{

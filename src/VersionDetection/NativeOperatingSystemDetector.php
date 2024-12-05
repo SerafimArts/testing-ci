@@ -6,13 +6,19 @@ namespace Tests\VersionDetection;
 
 final readonly class NativeOperatingSystemDetector
 {
+    public const string FAMILY_WINDOWS = 'windows';
+    public const string FAMILY_MACOS = 'macos';
+    public const string FAMILY_LINUX = 'linux';
+    public const string FAMILY_UNIX = 'unix';
+    public const string FAMILY_OTHER = 'other';
+
     public function detect(): OperatingSystem
     {
         $family = $this->detectFamily();
 
         return new OperatingSystem(
             family: $family,
-            name: $this->detectName(),
+            name: $this->detectName($family),
             isPosix: $this->detectIsPosix($family),
             extension: $this->detectExtension($family),
             version: $this->detectVersion($family),
@@ -20,31 +26,32 @@ final readonly class NativeOperatingSystemDetector
     }
 
     /**
-     * @return non-empty-lowercase-string
+     * @return (self::FAMILY_*)
      */
     private function detectFamily(): string
     {
         return match (\PHP_OS_FAMILY) {
-            'Windows' => 'windows',
-            'BSD', 'Solaris' => 'unix',
-            'Linux' => 'linux',
-            'Darwin' => 'osx',
-            default => 'other',
+            'Windows' => self::FAMILY_WINDOWS,
+            'Linux' => self::FAMILY_LINUX,
+            'Darwin' => self::FAMILY_MACOS,
+            'BSD', 'Solaris' => self::FAMILY_UNIX,
+            default => self::FAMILY_OTHER,
         };
     }
 
     /**
+     * @param non-empty-lowercase-string $family
      * @return non-empty-string
      */
-    private function detectName(): string
+    private function detectName(string $family): string
     {
         $default = \php_uname('s');
 
-        return match (\PHP_OS_FAMILY) {
-            'BSD', 'Solaris', 'Linux' => $this->tryDetectLinuxName()
+        return match ($family) {
+            self::FAMILY_LINUX,
+            self::FAMILY_MACOS,
+            self::FAMILY_UNIX => $this->tryDetectLinuxName()
                 ?? $default,
-            // TODO Darwin
-            'Darwin' => $default,
             default => $default,
         };
     }
@@ -70,7 +77,7 @@ final readonly class NativeOperatingSystemDetector
             return null;
         }
 
-        \preg_match('/\D+/', (string)$fullName, $matches);
+        \preg_match('/\D+/', (string) $fullName, $matches);
 
         if (!\is_string($matches[0]) || $matches[0] === '') {
             return null;
@@ -120,7 +127,7 @@ final readonly class NativeOperatingSystemDetector
     private function parseKeyValStream(mixed $stream): iterable
     {
         while (!\feof($stream)) {
-            $line = (string)\fgets($stream);
+            $line = (string) \fgets($stream);
 
             if (($keyEndsAt = \strpos($line, '=')) === false) {
                 continue;
@@ -141,8 +148,10 @@ final readonly class NativeOperatingSystemDetector
     private function detectIsPosix(string $family): ?bool
     {
         return match ($family) {
-            'windows' => false,
-            'unix', 'linux', 'osx' => true,
+            self::FAMILY_WINDOWS => false,
+            self::FAMILY_LINUX,
+            self::FAMILY_MACOS,
+            self::FAMILY_UNIX => true,
             default => null,
         };
     }
@@ -158,10 +167,11 @@ final readonly class NativeOperatingSystemDetector
         }
 
         return match ($family) {
-            'windows' => 'dll',
-            'linux', 'unix' => 'so',
-            'osx' => 'dylib',
-            default => \PHP_SHLIB_SUFFIX === '' ? \PHP_SHLIB_SUFFIX : null,
+            self::FAMILY_WINDOWS => 'dll',
+            self::FAMILY_LINUX,
+            self::FAMILY_UNIX => 'so',
+            self::FAMILY_MACOS => 'dylib',
+            default => null,
         };
     }
 
@@ -171,9 +181,10 @@ final readonly class NativeOperatingSystemDetector
     private function detectVersion(string $family): ?Version
     {
         return match ($family) {
-            'windows' => $this->tryDetectWindowsVersion(),
-            // TODO Is OSX should be detected like any *nix OS?
-            'linux', 'unix', 'osx' => $this->tryDetectLinuxKernelVersion(),
+            self::FAMILY_WINDOWS => $this->tryDetectWindowsVersion(),
+            self::FAMILY_LINUX,
+            self::FAMILY_MACOS,
+            self::FAMILY_UNIX => $this->tryDetectLinuxKernelVersion(),
             default => new Version(),
         };
     }
@@ -223,8 +234,7 @@ final readonly class NativeOperatingSystemDetector
              * } $ffi
              * @phpstan-var \FFI $ffi
              */
-            $ffi = \FFI::cdef(
-                <<<'CDATA'
+            $ffi = \FFI::cdef(<<<'CDATA'
                 typedef long NTSTATUS;
                 typedef unsigned int ULONG;
                 typedef unsigned int WCHAR;
@@ -241,9 +251,7 @@ final readonly class NativeOperatingSystemDetector
                 NTSTATUS RtlGetVersion(
                     PRTL_OSVERSIONINFOW lpVersionInformation
                 );
-                CDATA,
-                'ntdll.dll'
-            );
+                CDATA, 'ntdll.dll');
 
             /**
              * @var object{

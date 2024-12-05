@@ -14,7 +14,7 @@
         }
     },
     "scripts": {
-        "test": "phpunit --testdox --testsuite=unit"
+        "test": "phpunit --testdox "
     },
     "minimum-stability": "dev",
     "prefer-stable": true

@@ -47,6 +47,15 @@ final readonly class NativeOperatingSystemDetector
     {
         $default = \php_uname('s');
 
+        dump(
+            \php_uname('s'),
+            \php_uname('n'),
+            \php_uname('r'),
+            \php_uname('v'),
+            \php_uname('m'),
+            $_SERVER,
+        );
+
         return match ($family) {
             self::FAMILY_LINUX,
             self::FAMILY_MACOS,
